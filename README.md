@@ -78,5 +78,5 @@ Live app: https://verigov.onrender.com/
 
 ## Team
 
-Built by Team Hack Buddies for Smart India Hackathon 2026.
-"@ | Set-Content README.md
+Built by Team BlockShield for Smart India Hackathon 2026.
+
