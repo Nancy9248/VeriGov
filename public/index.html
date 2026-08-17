@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Government ID Verification — Blockchain</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; background: #f4f6f8; }
+  h1 { color: #1a2b4c; }
+  .card { background: white; border-radius: 8px; padding: 24px; margin-bottom: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+  h2 { margin-top: 0; color: #333; }
+  input, select, textarea { width: 100%; padding: 10px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; margin-bottom: 10px; }
+  button { padding: 10px 20px; background: #1a2b4c; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+  button:hover { background: #2a3f6c; }
+  button.secondary { background: #888; margin-left: 8px; }
+  button.link { background: none; color: #1a2b4c; text-decoration: underline; padding: 0; font-size: 13px; }
+  .result { margin-top: 16px; padding: 12px; border-radius: 4px; font-family: monospace; font-size: 13px; white-space: pre-wrap; word-break: break-all; }
+  .valid { background: #d4edda; color: #155724; }
+  .invalid { background: #f8d7da; color: #721c24; }
+  .neutral { background: #e2e3e5; color: #383d41; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+  .badge { background: #1a2b4c; color: white; padding: 4px 10px; border-radius: 12px; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+  th, td { text-align: left; padding: 8px; border-bottom: 1px solid #eee; }
+  th { background: #f0f2f5; }
+  .toggle-row { text-align: center; margin-top: 10px; }
+  .password-wrap { position: relative; }
+  .password-wrap input { padding-right: 40px; }
+  .password-eye { position: absolute; right: 12px; top: 10px; cursor: pointer; user-select: none; }
+</style>
+</head>
+<body>
+
+<h1>🔐 Government ID Verification</h1>
+<p>Blockchain-based document authenticity checker</p>
+
+<!-- LOGIN CARD -->
+<div class="card" id="loginCard">
+  <h2>Login</h2>
+  <input type="email" id="loginEmail" placeholder="Email">
+  <div class="password-wrap">
+    <input type="password" id="loginPassword" placeholder="Password">
+    <span class="password-eye" onclick="togglePassword('loginPassword', this)">👁️</span>
+  </div>
+  <button onclick="login()">Login</button>
+  <div id="loginResult"></div>
+  <div class="toggle-row">
+    <button class="link" onclick="showSignup()">Don't have an account? Sign up</button>
+  </div>
+</div>
+
+<!-- SIGNUP CARD -->
+<div class="card" id="signupCard" style="display:none;">
+  <h2>Sign Up</h2>
+  <input type="text" id="signupName" placeholder="Full Name">
+  <input type="email" id="signupEmail" placeholder="Email">
+  <div class="password-wrap">
+    <input type="password" id="signupPassword" placeholder="Password">
+    <span class="password-eye" onclick="togglePassword('signupPassword', this)">👁️</span>
+  </div>
+  <select id="signupRole" onchange="toggleAdminSecret()">
+    <option value="user">User</option>
+    <option value="student">Student</option>
+    <option value="company">Company</option>
+    <option value="admin">Admin (Government Authority)</option>
+  </select>
+  <div class="password-wrap" id="adminSecretWrap" style="display:none;">
+    <input type="password" id="adminSecret" placeholder="Admin Secret Code">
+    <span class="password-eye" onclick="togglePassword('adminSecret', this)">👁️</span>
+  </div>
+  <button onclick="signup()">Create Account</button>
+  <div id="signupResult"></div>
+  <div class="toggle-row">
+    <button class="link" onclick="showLogin()">Already have an account? Log in</button>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="appSection" style="display:none;">
+  <div class="topbar">
+    <div><span class="badge" id="userBadge"></span></div>
+    <button class="secondary" onclick="logout()">Logout</button>
+  </div>
+
+  <div class="card" id="issuerCard" style="display:none;">
+    <h2>Issuer Portal (Admin)</h2>
+    <p>Register a new ID document on the blockchain.</p>
+    <input type="file" id="registerFile" accept=".pdf,.jpg,.jpeg,.png">
+    <button onclick="registerDocument()">Register Document</button>
+    <div id="registerResult"></div>
+  </div>
+
+  <div class="card">
+    <h2>Verifier Portal</h2>
+    <p>Check if a document is genuine.</p>
+    <input type="file" id="verifyFile" accept=".pdf,.jpg,.jpeg,.png">
+    <button onclick="verifyDocument()">Verify Document</button>
+    <div id="verifyResult"></div>
+  </div>
+
+  <div class="card" id="historyCard" style="display:none;">
+    <h2>Audit History (Admin)</h2>
+    <button onclick="loadHistory()">Refresh History</button>
+    <div id="historyTable"></div>
+  </div>
+</div>
+
+<script>
+const API_BASE = "http://localhost:3001";
+let currentUser = null;
+let currentToken = null;
+
+window.onload = () => {
+  const savedToken = localStorage.getItem("token");
+  const savedUser = localStorage.getItem("user");
+  if (savedToken && savedUser) {
+    currentToken = savedToken;
+    currentUser = JSON.parse(savedUser);
+    showApp();
+  }
+};
+
+function togglePassword(inputId, iconEl) {
+  const input = document.getElementById(inputId);
+  if (input.type === "password") {
+    input.type = "text";
+    iconEl.innerText = "🙈";
+  } else {
+    input.type = "password";
+    iconEl.innerText = "👁️";
+  }
+}
+
+function showSignup() {
+  document.getElementById("loginCard").style.display = "none";
+  document.getElementById("signupCard").style.display = "block";
+}
+function showLogin() {
+  document.getElementById("signupCard").style.display = "none";
+  document.getElementById("loginCard").style.display = "block";
+}
+function toggleAdminSecret() {
+  const role = document.getElementById("signupRole").value;
+  document.getElementById("adminSecretWrap").style.display = role === "admin" ? "block" : "none";
+}
+
+async function signup() {
+  const name = document.getElementById("signupName").value;
+  const email = document.getElementById("signupEmail").value;
+  const password = document.getElementById("signupPassword").value;
+  const role = document.getElementById("signupRole").value;
+  const adminSecret = document.getElementById("adminSecret").value;
+  const resultDiv = document.getElementById("signupResult");
+
+  if (!name || !email || !password) {
+    resultDiv.innerHTML = '<div class="result neutral">Please fill all fields.</div>';
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, email, password, role, adminSecret })
+    });
+    const data = await res.json();
+    if (data.success) {
+      resultDiv.innerHTML = `<div class="result valid">✅ Account created! Please log in.</div>`;
+      setTimeout(() => { showLogin(); resultDiv.innerHTML = ""; }, 1500);
+    } else {
+      resultDiv.innerHTML = `<div class="result invalid">${data.error}</div>`;
+    }
+  } catch (err) {
+    resultDiv.innerHTML = `<div class="result invalid">Error: ${err.message}</div>`;
+  }
+}
+
+async function login() {
+  const email = document.getElementById("loginEmail").value;
+  const password = document.getElementById("loginPassword").value;
+  const resultDiv = document.getElementById("loginResult");
+
+  try {
+    const res = await fetch(`${API_BASE}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      currentToken = data.token;
+      currentUser = { email: data.email, role: data.role, name: data.name };
+      localStorage.setItem("token", currentToken);
+      localStorage.setItem("user", JSON.stringify(currentUser));
+      resultDiv.innerHTML = "";
+      showApp();
+    } else {
+      resultDiv.innerHTML = `<div class="result invalid">${data.error}</div>`;
+    }
+  } catch (err) {
+    resultDiv.innerHTML = `<div class="result invalid">Error: ${err.message}</div>`;
+  }
+}
+
+function logout() {
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+  currentToken = null;
+  currentUser = null;
+  document.getElementById("appSection").style.display = "none";
+  document.getElementById("loginCard").style.display = "block";
+}
+
+function showApp() {
+  document.getElementById("loginCard").style.display = "none";
+  document.getElementById("signupCard").style.display = "none";
+  document.getElementById("appSection").style.display = "block";
+  document.getElementById("userBadge").innerText = `${currentUser.name} (${currentUser.role})`;
+
+  if (currentUser.role === "admin") {
+    document.getElementById("issuerCard").style.display = "block";
+    document.getElementById("historyCard").style.display = "block";
+    loadHistory();
+  } else {
+    document.getElementById("issuerCard").style.display = "none";
+    document.getElementById("historyCard").style.display = "none";
+  }
+}
+
+async function registerDocument() {
+  const fileInput = document.getElementById("registerFile");
+  const resultDiv = document.getElementById("registerResult");
+  if (!fileInput.files[0]) { resultDiv.innerHTML = '<div class="result neutral">Please select a file.</div>'; return; }
+
+  const formData = new FormData();
+  formData.append("document", fileInput.files[0]);
+
+  resultDiv.innerHTML = '<div class="result neutral">Registering on blockchain...</div>';
+  try {
+    const res = await fetch(`${API_BASE}/register`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${currentToken}` },
+      body: formData
+    });
+    const data = await res.json();
+    if (data.success) {
+      resultDiv.innerHTML = `<div class="result valid">✅ Registered successfully!\nFile: ${data.fileName}\nHash: ${data.docHash}\nIssued by: ${data.issuedBy}</div>`;
+      loadHistory();
+    } else {
+      resultDiv.innerHTML = `<div class="result invalid">Error: ${data.error}</div>`;
+    }
+  } catch (err) {
+    resultDiv.innerHTML = `<div class="result invalid">Error: ${err.message}</div>`;
+  }
+}
+
+async function verifyDocument() {
+  const fileInput = document.getElementById("verifyFile");
+  const resultDiv = document.getElementById("verifyResult");
+  if (!fileInput.files[0]) { resultDiv.innerHTML = '<div class="result neutral">Please select a file.</div>'; return; }
+
+  const formData = new FormData();
+  formData.append("document", fileInput.files[0]);
+
+  resultDiv.innerHTML = '<div class="result neutral">Verifying...</div>';
+  try {
+    const res = await fetch(`${API_BASE}/verify`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${currentToken}` },
+      body: formData
+    });
+    const data = await res.json();
+    if (data.isValid) {
+      resultDiv.innerHTML = `<div class="result valid">✅ GENUINE DOCUMENT\nHash: ${data.docHash}\nIssued by: ${data.issuer}\nRegistered: ${data.timestamp}</div>`;
+    } else {
+      resultDiv.innerHTML = `<div class="result invalid">❌ NOT FOUND / TAMPERED\nHash: ${data.docHash}\nThis document is not registered or has been altered.</div>`;
+    }
+    if (currentUser.role === "admin") loadHistory();
+  } catch (err) {
+    resultDiv.innerHTML = `<div class="result invalid">Error: ${err.message}</div>`;
+  }
+}
+
+async function loadHistory() {
+  const tableDiv = document.getElementById("historyTable");
+  try {
+    const res = await fetch(`${API_BASE}/admin/history`, {
+      headers: { "Authorization": `Bearer ${currentToken}` }
+    });
+    const logs = await res.json();
+    if (!Array.isArray(logs) || logs.length === 0) {
+      tableDiv.innerHTML = "<p>No activity yet.</p>";
+      return;
+    }
+    let html = "<table><tr><th>Time</th><th>User</th><th>Role</th><th>Action</th><th>File</th><th>Result</th></tr>";
+    for (const log of logs) {
+      html += `<tr><td>${new Date(log.timestamp).toLocaleString()}</td><td>${log.user_email}</td><td>${log.user_role}</td><td>${log.action}</td><td>${log.file_name || "-"}</td><td>${log.result}</td></tr>`;
+    }
+    html += "</table>";
+    tableDiv.innerHTML = html;
+  } catch (err) {
+    tableDiv.innerHTML = `<div class="result invalid">Error loading history: ${err.message}</div>`;
+  }
+}
+</script>
+
+</body>
+</html>
